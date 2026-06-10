@@ -50,6 +50,9 @@
             <div class="empty-kanban">Нет доступных мастеров</div>
             {% endif %}
         </div>
+        {% if current_user.role == 'admin' %}
+        <button type="button" class="btn btn-sm btn-danger" onclick="if(confirm('Удалить заказ?')) { fetch(`/api/v1/orders/{{ order.id }}`, { method: 'DELETE' }).then(() => window.location.reload()); }">Өшіру</button>
+        {% endif %}
         {% elif order.status == 'In Progress' %}
         <button class="btn-complete" onclick="completeOrder({{ order.id }})">Дайын</button>
         {% else %}
@@ -57,10 +60,10 @@
         {% endif %}
     </div>
     <div class="photo-btns">
-        <button type="button" class="photo-btn" data-i18n="before" data-photo-type="before">📸 До</button>
-        <input type="file" accept="image/*" capture="environment" class="photo-input" data-photo-type="before" style="display:none;">
-        <button type="button" class="photo-btn" data-i18n="after" data-photo-type="after">✨ После</button>
-        <input type="file" accept="image/*" capture="environment" class="photo-input" data-photo-type="after" style="display:none;">
+        <button type="button" class="photo-btn" data-i18n="before" data-photo-type="before" onclick="document.querySelector('input[data-photo-type=before]').click()">📸 До</button>
+        <input type="file" accept="image/*" capture="environment" class="photo-input" data-photo-type="before" style="display:none;" onchange="uploadPhoto(this)">
+        <button type="button" class="photo-btn" data-i18n="after" data-photo-type="after" onclick="document.querySelector('input[data-photo-type=after]').click()">✨ После</button>
+        <input type="file" accept="image/*" capture="environment" class="photo-input" data-photo-type="after" style="display:none;" onchange="uploadPhoto(this)">
     </div>
     {% if order.status == 'Ready' %}
     <button type="button" class="btn-print" data-i18n="printReceipt">Печать чека</button>

@@ -945,7 +945,7 @@ def register_routes(app: Flask) -> None:
     @app.route('/api/v1/orders/<int:order_id>/start', methods=['POST'])
     @login_required
     def start_order(order_id: int):
-        if not user_is_admin():
+        if current_user.role not in ['admin', 'master']:
             raise ApiError('Доступ запрещён.', status_code=403)
         order = get_order_or_404(order_id)
         if order.status != 'Pending':
@@ -967,6 +967,8 @@ def register_routes(app: Flask) -> None:
     @app.route('/api/v1/orders/<int:order_id>/complete', methods=['POST'])
     @login_required
     def complete_order(order_id: int):
+        if current_user.role not in ['admin', 'master']:
+            raise ApiError('Доступ запрещён.', status_code=403)
         order = get_order_or_404(order_id)
         order.status = validate_order_status('completed')
         db.session.commit()
@@ -1129,6 +1131,20 @@ def register_routes(app: Flask) -> None:
             send_client_notification(order.id, order.status)
         return jsonify({"success": True, "data": order_to_dict(get_order_or_404(order_id))})
 
+    @app.route("/api/v1/orders/<int:order_id>", methods=["DELETE"])
+    @login_required
+    def delete_order(order_id: int):
+        if current_user.role != 'admin':
+            raise ApiError('Доступ запрещён. Только администратор может удалять заказы.', status_code=403)
+        try:
+            order = get_order_or_404(order_id)
+            db.session.delete(order)
+            db.session.commit()
+            return jsonify({'success': True, 'message': 'Заказ удалён'}), 200
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({'success': False, 'error': str(e)}), 500
+
     @app.route("/api/v1/analytics", methods=["GET"])
     @login_required
     def analytics_api():
@@ -1150,6 +1166,8 @@ def register_routes(app: Flask) -> None:
     @app.route("/upload_photo/<int:order_id>/<string:photo_type>", methods=["POST"])
     @login_required
     def upload_photo(order_id: int, photo_type: str):
+        if current_user.role not in ['admin', 'master']:
+            raise ApiError('Доступ запрещён.', status_code=403)
         order = get_order_or_404(order_id)
         ensure_order_access(order)
         

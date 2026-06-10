@@ -1,10 +1,3 @@
-"""
-Скрипт заполнения базы данных тестовыми данными для Auto Detailing CRM.
-
-Запуск:
-    python seed.py
-"""
-
 from datetime import datetime, timedelta, timezone
 
 from werkzeug.security import generate_password_hash

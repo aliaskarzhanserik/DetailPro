@@ -426,6 +426,32 @@ async function completeOrder(id) {
   }
 }
 
+async function uploadPhoto(input) {
+  if (!input.files || input.files.length === 0) return;
+  
+  const photoType = input.getAttribute('data-photo-type');
+  const card = input.closest('.oc');
+  const orderId = card.getAttribute('data-order-id');
+  
+  const formData = new FormData();
+  formData.append('photo', input.files[0]);
+  
+  try {
+    const res = await fetch(`/upload_photo/${orderId}/${photoType}`, {
+      method: 'POST',
+      body: formData
+    });
+    if (res.ok) {
+      alert('Фото успешно загружено');
+      input.value = '';
+    } else {
+      alert('Ошибка загрузки: ' + await res.text());
+    }
+  } catch (err) {
+    alert('Ошибка: ' + err.message);
+  }
+}
+
 const translations = {
     kz: {
         overview: "Обзор",
