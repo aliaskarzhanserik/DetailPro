@@ -36,27 +36,17 @@
     </div>
     <div class="move-buttons" style="margin:.5rem 0; display:flex; gap:.5rem; flex-wrap:wrap;">
         {% if order.status == 'Pending' %}
-        <button class="move-btn btn btn-sm btn-outline-info" data-i18n="startWork" onclick="toggleMasterPicker({{ order.id }})">Жұмысқа кірісу →</button>
-        <div id="master-picker-{{ order.id }}" class="master-picker" style="display:none; flex-direction:column; gap:.75rem; width:100%; margin-top:10px;">
-            {% if masters %}
-            <select id="master-select-{{ order.id }}" class="form-control bg-dark text-white border-secondary" style="border-radius:8px; padding:10px;">
-                <option value="">Выберите мастера</option>
-                {% for master in masters %}
-                <option value="{{ master.id }}">{{ master.username }}</option>
-                {% endfor %}
-            </select>
-            <button type="button" class="btn btn-sm btn-success" onclick="startOrder({{ order.id }})">Назначить мастера</button>
-            {% else %}
-            <div class="empty-kanban">Нет доступных мастеров</div>
-            {% endif %}
-        </div>
+        <button class="move-btn btn btn-sm btn-outline-info" data-i18n="startWork" onclick="updateOrderStatus({{ order.id }}, 'in_progress')">В работу</button>
         {% if current_user.role == 'admin' %}
-        <button type="button" class="btn btn-sm btn-danger" onclick="if(confirm('Удалить заказ?')) { fetch(`/api/v1/orders/{{ order.id }}`, { method: 'DELETE' }).then(() => window.location.reload()); }">Өшіру</button>
+        <button type="button" class="btn btn-sm btn-danger" onclick="if(confirm('Удалить заказ?')) { fetch(`/api/v1/orders/{{ order.id }}`, { method: 'DELETE' }).then(res => { if(res.ok) window.location.reload(); else alert('Ошибка удаления'); }); }">Удалить</button>
         {% endif %}
         {% elif order.status == 'In Progress' %}
         <button class="btn-complete" onclick="completeOrder({{ order.id }})">Дайын</button>
+        {% if current_user.role == 'admin' %}
+        <button type="button" class="btn btn-sm btn-danger" onclick="if(confirm('Удалить заказ?')) { fetch(`/api/v1/orders/{{ order.id }}`, { method: 'DELETE' }).then(res => { if(res.ok) window.location.reload(); else alert('Ошибка удаления'); }); }">Удалить</button>
+        {% endif %}
         {% else %}
-        <button class="move-btn btn btn-sm btn-secondary archive-btn" data-i18n="archive" onclick="archiveOrder('{{ order.id }}')">Архивке жіберу 📥</button>
+        <button class="move-btn btn btn-sm btn-secondary archive-btn" data-i18n="archive" onclick="archiveOrder('{{ order.id }}')">Архив 📥</button>
         {% endif %}
     </div>
     <div class="photo-btns">
@@ -66,6 +56,6 @@
         <input type="file" accept="image/*" capture="environment" class="photo-input" data-photo-type="after" style="display:none;" onchange="uploadPhoto(this)">
     </div>
     {% if order.status == 'Ready' %}
-    <button type="button" class="btn-print" data-i18n="printReceipt">Печать чека</button>
+    <button type="button" class="btn-print" data-i18n="printReceipt" onclick="printReceipt({{ order.id }})">Печать чека</button>
     {% endif %}
 </div>

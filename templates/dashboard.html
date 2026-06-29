@@ -9,9 +9,13 @@
 <div class="dashboard-pro">
     <div class="dashboard-main-layout">
         <div class="dashboard-side-nav">
+            {% if is_admin %}
             <button type="button" class="side-nav-button active" data-tab="overview"><i class="bi bi-graph-up"></i><span>Обзор</span></button>
             <button type="button" class="side-nav-button" data-tab="orders"><i class="bi bi-list-check"></i><span>Заказы</span></button>
             <button type="button" class="side-nav-button" data-tab="team"><i class="bi bi-people"></i><span>Команда</span></button>
+            {% else %}
+            <button type="button" class="side-nav-button active" data-tab="overview"><i class="bi bi-kanban"></i><span>Тапсырыстар</span></button>
+            {% endif %}
             <a href="{{ url_for('track') }}" class="side-nav-button" style="text-decoration:none;"><i class="bi bi-geo-alt"></i><span>Трекинг</span></a>
         </div>
 
@@ -215,6 +219,7 @@
                 </div>
             </div>
 
+            {% if is_admin %}
             <div id="team" class="dashboard-tab">
                 <div class="team-panel">
                     <div class="team-header">
@@ -270,6 +275,7 @@
                     </div>
                 </div>
             </div>
+            {% endif %}
         </div>
     </div>
 </div>
@@ -394,35 +400,63 @@ async function completeOrder(id) {
     const res = await fetch(`/api/v1/orders/${id}/complete`, { method: 'POST' });
     if (res.ok) {
       const data = await res.json();
-      document.getElementById('receipt-print-area').innerHTML = `
-        <div style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#17171c;border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:2rem;z-index:9999;max-width:400px;width:90%;color:#fff;font-family:monospace;">
-          <h4 style="margin:0 0 1rem;text-align:center;font-family:monospace;">ЧЕК / ЕСЕП</h4>
-          <div style="border-bottom:1px dashed rgba(255,255,255,.3);padding-bottom:1rem;margin-bottom:1rem;font-size:.9rem;">
-            <div style="display:flex;justify-content:space-between;margin:.3rem 0;">
-              <span>Госномер:</span>
-              <strong>${data.plate}</strong>
-            </div>
-            <div style="display:flex;justify-content:space-between;margin:.3rem 0;">
-              <span>Марка:</span>
-              <strong>${data.brand}</strong>
-            </div>
-            <div style="display:flex;justify-content:space-between;margin:.3rem 0;">
-              <span>Услуга:</span>
-              <strong>${data.service}</strong>
-            </div>
-            <div style="display:flex;justify-content:space-between;margin:.3rem 0;">
-              <span>Мастер:</span>
-              <strong>${data.master}</strong>
-            </div>
-          </div>
-          <div style="text-align:right;font-weight:700;font-size:1.2rem;">Итого: ${data.price} ₸</div>
-          <button onclick="window.print();this.parentElement.remove();" style="width:100%;margin-top:1rem;background:#00ff88;color:#0f0f12;border:none;border-radius:8px;padding:.75rem;font-weight:700;cursor:pointer;">Печать</button>
-        </div>
-      `;
-      setTimeout(() => location.reload(), 3000);
+      
+      const htmlCheck = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>ЧЕК / ЕСЕП</title>
+  <style>
+    body { font-family: monospace; max-width: 400px; margin: 0 auto; padding: 20px; }
+    .header { text-align: center; font-size: 18px; font-weight: bold; margin-bottom: 20px; }
+    .content { border-bottom: 2px dashed #000; padding-bottom: 20px; margin-bottom: 20px; }
+    .line { display: flex; justify-content: space-between; margin: 10px 0; }
+    .label { font-weight: normal; }
+    .value { font-weight: bold; }
+    .total { font-size: 18px; font-weight: bold; text-align: right; margin-top: 20px; }
+  </style>
+</head>
+<body>
+  <div class="header">ЧЕК / ЕСЕП</div>
+  <div class="content">
+    <div class="line">
+      <span class="label">Госномер:</span>
+      <span class="value">${data.plate || '—'}</span>
+    </div>
+    <div class="line">
+      <span class="label">Марка:</span>
+      <span class="value">${data.brand || '—'}</span>
+    </div>
+    <div class="line">
+      <span class="label">Услуга:</span>
+      <span class="value">${data.service || '—'}</span>
+    </div>
+    <div class="line">
+      <span class="label">Мастер:</span>
+      <span class="value">${data.master || '—'}</span>
+    </div>
+  </div>
+  <div class="total">Итого: ${data.price || '0'} ₸</div>
+</body>
+</html>`;
+      
+      const printWindow = window.open('', '_blank');
+      printWindow.document.write(htmlCheck);
+      printWindow.document.close();
+      
+      setTimeout(() => {
+        printWindow.print();
+        setTimeout(() => {
+          printWindow.close();
+          window.location.reload();
+        }, 500);
+      }, 100);
+    } else {
+      alert('Ошибка завершения заказа: ' + await res.text());
     }
   } catch (err) {
     console.error(err);
+    alert('Ошибка: ' + err.message);
   }
 }
 
@@ -455,25 +489,89 @@ async function uploadPhoto(input) {
 const translations = {
     kz: {
         overview: "Обзор",
-        orders: "Тапсырыстар",
-        team: "Команда",
-        tracking: "Клиенттерге арналған трекинг",
-        archive_title: "Архив заказов (Аяқталған жұмыстар)",
-        team_title: "Басқару құрамы / Команда",
-        add_master: "Шеберді қосу",
-        archive_empty: "Архив бос",
+        panelTitle: "Панель басқару",
+        panelSub: "Детейлинг-центр",
+        revenue: "Табыс",
+        totalTasks: "Барлығы тапсырмалар",
+        inQueue: "Кезекте",
+        inWork: "Жұмыс үстінде",
+        done: "Дайын",
+        revenueChart: "Табыс динамикасы",
+        brandChart: "Маркалар танымалдығы",
+        leaderboard: "Шеберлердің рейтингі",
+        liveSearch: "Іздеу (марка / госномер)",
+        allMasters: "Барлық шеберлер",
+        addCar: "Авто қосу",
+        kanbanTitle: "Тапсырыстар доскасы",
+        statusPending: "Күтуде",
+        statusProgress: "Жұмыс үстінде",
+        statusReady: "Дайын",
+        emptyCol: "Бос",
+        service: "Қызмет",
+        master: "Шебер",
+        received: "Қабылданды",
+        duration: "Мерзімі",
+        countdown: "Қалдық",
+        checkWash: "Жуу",
+        checkMain: "Негізгі жұмыс",
+        checkAccept: "Қабылдау",
+        startWork: "Жұмысқа кірісу →",
+        archive: "Архивке жіберу 📥",
+        before: "📸 До",
+        after: "✨ После",
+        printReceipt: "Чекті баспасына шығару",
+        modalTitle: "Автомобиль қосу",
+        brand: "Марка",
+        model: "Модель",
+        plate: "Госномер",
+        phone: "Телефон",
+        serviceSelect: "Қызмет таңдау",
+        masterSelect: "Шебер таңдау",
+        cancel: "Болдырмау",
         save: "Сақтау",
         delete: "Өшіру"
     },
     ru: {
         overview: "Обзор",
-        orders: "Заказы",
-        team: "Команда",
-        tracking: "Трекинг для клиентов",
-        archive_title: "Архив заказов",
-        team_title: "Управление / Команда",
-        add_master: "Добавить мастера",
-        archive_empty: "Архив пуст",
+        panelTitle: "Панель управления",
+        panelSub: "Детейлинг-центр",
+        revenue: "Выручка",
+        totalTasks: "Всего задач",
+        inQueue: "В очереди",
+        inWork: "В работе",
+        done: "Готово",
+        revenueChart: "Динамика дохода",
+        brandChart: "Популярность марок",
+        leaderboard: "Рейтинг мастеров",
+        liveSearch: "Поиск (марка / госномер)",
+        allMasters: "Все мастера",
+        addCar: "Добавить авто",
+        kanbanTitle: "Доска заказов",
+        statusPending: "В ожидании",
+        statusProgress: "В работе",
+        statusReady: "Готово",
+        emptyCol: "Пусто",
+        service: "Услуга",
+        master: "Мастер",
+        received: "Принято",
+        duration: "Срок",
+        countdown: "Осталось",
+        checkWash: "Мойка",
+        checkMain: "Основная работа",
+        checkAccept: "Приемка",
+        startWork: "В работу",
+        archive: "Архив 📥",
+        before: "📸 До",
+        after: "✨ После",
+        printReceipt: "Печать чека",
+        modalTitle: "Добавить автомобиль",
+        brand: "Марка",
+        model: "Модель",
+        plate: "Госномер",
+        phone: "Телефон",
+        serviceSelect: "Услуга",
+        masterSelect: "Мастер",
+        cancel: "Отмена",
         save: "Сохранить",
         delete: "Удалить"
     }
@@ -508,10 +606,17 @@ const savedLang = localStorage.getItem('selected_lang') || 'ru';
 changeLanguage(savedLang);
 document.querySelector(`.lang-btn[data-lang="${savedLang}"]`)?.classList.add('active');
 
-document.getElementById('form-add-car')?.addEventListener('submit', function(e) {
+document.getElementById('quick-order-form')?.addEventListener('submit', function(e) {
     e.preventDefault();
-    fetch('/orders/create', { method: 'POST', body: new FormData(this) })
-    .then(() => window.location.reload());
+    fetch('/api/v1/quick-order', { method: 'POST', body: new FormData(this) })
+    .then(res => {
+        if (res.ok) {
+            window.location.reload();
+        } else {
+            return res.text().then(txt => { alert('Ошибка: ' + txt); });
+        }
+    })
+    .catch(err => alert('Ошибка: ' + err.message));
 });
 
 document.getElementById('form-add-master')?.addEventListener('submit', function(e) {
@@ -519,5 +624,132 @@ document.getElementById('form-add-master')?.addEventListener('submit', function(
     fetch('/api/v1/masters/create', { method: 'POST', body: new FormData(this) })
     .then(() => window.location.reload());
 });
+
+function toggleMasterPicker(orderId) {
+    const picker = document.getElementById(`master-picker-${orderId}`);
+    if (picker) {
+        picker.style.display = picker.style.display === 'none' ? 'flex' : 'none';
+    }
+}
+
+async function startOrder(orderId) {
+    const selectEl = document.getElementById(`master-select-${orderId}`);
+    const masterId = selectEl?.value;
+    
+    if (!masterId) {
+        alert('Пожалуйста, выберите мастера');
+        return;
+    }
+    
+    try {
+        const res = await fetch(`/api/v1/orders/${orderId}/start`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ master_id: masterId })
+        });
+        
+        if (res.ok) {
+            window.location.reload();
+        } else {
+            const errorText = await res.text();
+            alert('Ошибка: ' + errorText);
+        }
+    } catch (err) {
+        alert('Ошибка: ' + err.message);
+    }
+}
+
+async function archiveOrder(orderId) {
+    try {
+        const res = await fetch(`/api/v1/orders/${orderId}/archive`, { method: 'POST' });
+        if (res.ok) {
+            window.location.reload();
+        } else {
+            alert('Ошибка: ' + await res.text());
+        }
+    } catch (err) {
+        alert('Ошибка: ' + err.message);
+    }
+}
+
+async function updateOrderStatus(orderId, status) {
+    try {
+        const res = await fetch('/orders/update_status', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ order_id: orderId, status: status })
+        });
+        if (res.ok) {
+            window.location.reload();
+        } else {
+            alert('Ошибка обновления статуса: ' + await res.text());
+        }
+    } catch (err) {
+        alert('Ошибка: ' + err.message);
+    }
+}
+
+function printReceipt(orderId) {
+    try {
+        const card = document.querySelector(`[data-order-id="${orderId}"]`);
+        if (!card) {
+            alert('Заказ не найден');
+            return;
+        }
+        
+        const plate = card.getAttribute('data-plate') || '—';
+        const brand = card.getAttribute('data-brand') || '—';
+        const service = card.getAttribute('data-service') || '—';
+        const price = card.getAttribute('data-price') || '0';
+        const worker = card.getAttribute('data-worker') || '—';
+        
+        const htmlCheck = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>ЧЕК / ЕСЕП</title>
+  <style>
+    body { font-family: monospace; max-width: 400px; margin: 0 auto; padding: 20px; }
+    .header { text-align: center; font-size: 18px; font-weight: bold; margin-bottom: 20px; }
+    .content { border-bottom: 2px dashed #000; padding-bottom: 20px; margin-bottom: 20px; }
+    .line { display: flex; justify-content: space-between; margin: 10px 0; }
+    .label { font-weight: normal; }
+    .value { font-weight: bold; }
+    .total { font-size: 18px; font-weight: bold; text-align: right; margin-top: 20px; }
+  </style>
+</head>
+<body>
+  <div class="header">ЧЕК / ЕСЕП</div>
+  <div class="content">
+    <div class="line">
+      <span class="label">Госномер:</span>
+      <span class="value">${plate}</span>
+    </div>
+    <div class="line">
+      <span class="label">Марка:</span>
+      <span class="value">${brand}</span>
+    </div>
+    <div class="line">
+      <span class="label">Услуга:</span>
+      <span class="value">${service}</span>
+    </div>
+    <div class="line">
+      <span class="label">Мастер:</span>
+      <span class="value">${worker}</span>
+    </div>
+  </div>
+  <div class="total">Итого: ${price} ₸</div>
+</body>
+</html>`;
+        
+        const printWindow = window.open('', '_blank');
+        printWindow.document.write(htmlCheck);
+        printWindow.document.close();
+        printWindow.print();
+    } catch (err) {
+        console.error(err);
+        alert('Ошибка печати: ' + err.message);
+    }
+}
 </script>
 {% endblock %}

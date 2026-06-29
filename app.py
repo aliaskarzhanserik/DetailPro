@@ -94,6 +94,8 @@ def get_scoped_user_id() -> Optional[int]:
 def ensure_order_access(order: Order) -> None:
     if user_is_admin():
         return
+    if user_is_master():
+        return
     if not current_user.is_authenticated or order.user_id != current_user.id:
         raise ApiError("Доступ запрещён.", status_code=403)
 
@@ -202,6 +204,27 @@ def get_json_body() -> dict:
     if data is None or not isinstance(data, dict):
         raise ApiError("Некорректный JSON.")
     return data
+
+
+def hash_password(password: str) -> str:
+    return generate_password_hash(password, method="pbkdf2:sha256")
+
+
+def verify_password(stored_password: Optional[str], provided_password: str) -> bool:
+    if not stored_password or not provided_password:
+        return False
+    try:
+        if check_password_hash(stored_password, provided_password):
+            return True
+    except ValueError:
+        pass
+    return stored_password == provided_password
+
+
+def looks_like_password_hash(value: Optional[str]) -> bool:
+    if not isinstance(value, str):
+        return False
+    return value.startswith(("pbkdf2:", "scrypt:", "bcrypt$", "argon2"))
 
 
 def require_fields(data: dict, fields: List[str]) -> None:
@@ -691,14 +714,27 @@ def build_master_dashboard_context() -> dict:
 
     forex = get_usd_kzt_exchange_info()
     usd_kzt_rate = forex["rate"]
-    orders = get_all_orders_with_relations(current_user.id)
+    
     pending_status = get_db_order_status("pending")
     in_progress_status = get_db_order_status("in_progress")
     ready_status = get_db_order_status("completed")
-    orders_pending = [o for o in orders if o.status == pending_status]
-    orders_in_progress = [o for o in orders if o.status == in_progress_status]
-    orders_ready = [o for o in orders if o.status == ready_status]
+    
+    all_orders = get_all_orders_with_relations(None)
+    master_orders = get_all_orders_with_relations(current_user.id)
+    
+    orders_pending = [o for o in all_orders if o.status == pending_status]
+    orders_in_progress = [o for o in master_orders if o.status == in_progress_status]
+    orders_ready = [o for o in master_orders if o.status == ready_status]
+    
     total_cash = get_total_cash_ready(current_user.id)
+    
+    masters = (
+        User.query
+        .filter(User.role == "master")
+        .order_by(User.username.asc())
+        .all()
+    )
+    services = Service.query.order_by(Service.name.asc()).all()
 
     return {
         "active_page": "master_dashboard",
@@ -711,11 +747,13 @@ def build_master_dashboard_context() -> dict:
         "pending_queue": len(orders_pending),
         "cars_in_progress": len(orders_in_progress),
         "completed_orders": len(orders_ready),
-        "orders": orders,
+        "orders": master_orders,
         "orders_pending": orders_pending,
         "orders_in_progress": orders_in_progress,
         "orders_ready": orders_ready,
         "status_labels": STATUS_LABELS_KZ,
+        "masters": masters,
+        "services": services,
     }
 
 
@@ -755,7 +793,11 @@ def register_routes(app: Flask) -> None:
             username = request.form.get("username", "").strip()
             password = request.form.get("password", "")
             user = User.query.filter_by(username=username).first()
-            if user and check_password_hash(user.password_hash, password):
+            if user and verify_password(user.password_hash, password):
+                if not looks_like_password_hash(user.password_hash):
+                    user.password_hash = hash_password(password)
+                    db.session.add(user)
+                    db.session.commit()
                 login_user(user)
                 nxt = request.args.get("next")
                 return redirect(nxt if nxt and nxt.startswith("/") else url_for("dashboard"))
@@ -783,7 +825,7 @@ def register_routes(app: Flask) -> None:
     def master_dashboard():
         if not user_is_master():
             raise ApiError("Доступ запрещён.", status_code=403)
-        return render_template("master_dashboard.html", **build_master_dashboard_context())
+        return redirect(url_for("dashboard"))
 
     @app.route("/add_master", methods=["POST"])
     @login_required
@@ -810,7 +852,7 @@ def register_routes(app: Flask) -> None:
 
         new_user = User(
             username=username,
-            password_hash=generate_password_hash(password, method='pbkdf2:sha256'),
+            password_hash=hash_password(password),
             role=role,
         )
         if hasattr(new_user, "phone"):
@@ -853,6 +895,8 @@ def register_routes(app: Flask) -> None:
     @app.route("/api/v1/orders/create", methods=["POST"])
     @login_required
     def create_order():
+        if not user_is_admin():
+            raise ApiError("Доступ запрещён.", status_code=403)
         data = request.form.to_dict(flat=True)
         require_fields(data, ["license_plate", "car_model", "service_name", "price"])
         license_plate = normalize_license_plate(data["license_plate"])
@@ -935,7 +979,7 @@ def register_routes(app: Flask) -> None:
             raise ApiError('Пользователь с таким именем уже существует.', status_code=400)
         new_user = User(
             username=username,
-            password_hash=generate_password_hash(password, method='pbkdf2:sha256'),
+            password_hash=hash_password(password),
             role='master',
         )
         db.session.add(new_user)
@@ -1001,6 +1045,8 @@ def register_routes(app: Flask) -> None:
     @app.route("/api/v1/quick-order", methods=["POST"])
     @login_required
     def quick_order():
+        if not user_is_admin():
+            raise ApiError("Доступ запрещён.", status_code=403)
         if request.is_json:
             data = get_json_body()
         else:
@@ -1144,6 +1190,26 @@ def register_routes(app: Flask) -> None:
         except Exception as e:
             db.session.rollback()
             return jsonify({'success': False, 'error': str(e)}), 500
+
+    @app.route("/orders/update_status", methods=["POST"])
+    @login_required
+    def update_status_legacy():
+        if current_user.role not in ['admin', 'master']:
+            raise ApiError('Доступ запрещён.', status_code=403)
+        data = get_json_body() if request.is_json else request.form.to_dict(flat=True)
+        require_fields(data, ['order_id', 'status'])
+        order_id = validate_positive_int(data['order_id'], 'order_id')
+        order = get_order_or_404(order_id)
+        ensure_order_access(order)
+        new_status = validate_order_status(data['status'])
+        old_status = order.status
+        order.status = new_status
+        if order.status == 'In Progress' and not order.user_id:
+            order.user_id = current_user.id
+        db.session.commit()
+        if old_status != order.status:
+            send_client_notification(order.id, new_status)
+        return jsonify({"success": True, "data": order_to_dict(get_order_or_404(order_id))})
 
     @app.route("/api/v1/analytics", methods=["GET"])
     @login_required
